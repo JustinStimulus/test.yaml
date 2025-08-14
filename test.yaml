@@ -1,0 +1,25 @@
+kubectl exec -it stimulus-api-6497c85ff-jdfg8 -n stimulus-uat -- python3 -c "
+import os
+from sqlmodel import create_engine, text
+engine = create_engine(os.environ['SRM_DATABASE_URL'])
+with engine.connect() as conn:
+    print('=== CHECKING TENANT_CONFIG TABLE ===')
+    result = conn.execute(text('SELECT COUNT(*) FROM global.tenant_config'))
+    count = result.fetchone()[0]
+    print(f'Total tenant_config records: {count}')
+    
+    result = conn.execute(text('SELECT slug, display_name, is_active, is_public FROM global.tenant_config LIMIT 10'))
+    rows = result.fetchall()
+    print('Existing tenants:')
+    for row in rows:
+        print(f'  - {row[0]}: {row[1]} (active: {row[2]}, public: {row[3]})')
+    
+    print()
+    print('=== CHECKING FOR NYNJ SPECIFICALLY ===')
+    result = conn.execute(text(\"SELECT * FROM global.tenant_config WHERE slug = 'nynj'\"))
+    nynj = result.fetchone()
+    if nynj:
+        print(f'NYNJ tenant found: {dict(nynj._mapping)}')
+    else:
+        print('NYNJ tenant NOT found!')
+"
