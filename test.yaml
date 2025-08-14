@@ -36,7 +36,7 @@ spec:
               chronyd -q 'server pool.ntp.org iburst' &&
               echo "Time synchronized: $(date)"
           securityContext:
-            privileged: true
+            privileged: true      
       containers:
       - name: stimulus-api
         image: __CONTAINER_REGISTRY__/stimulus-api:__IMAGE_TAG__
@@ -106,7 +106,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: stimulus-secrets
-              key: neo4j-password
+              key: neo4j-password                            
         - name: OPENAI_API_KEY
           valueFrom:
             secretKeyRef:
@@ -152,3 +152,71 @@ spec:
           initialDelaySeconds: 60
           periodSeconds: 10
           failureThreshold: 10
+
+
+
+# Trigger filter: test change for backend
+
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: data-engine
+#   labels:
+#     app: data-engine
+# spec:
+#   replicas: 3
+#   selector:
+#     matchLabels:
+#       app: data-engine
+#   template:
+#     metadata:
+#       labels:
+#         app: data-engine
+#     spec:
+#       containers:
+#         - name: data-engine
+#           image: ghcr.io/org/data-engine:latest
+#           ports:
+#             - containerPort: 8000
+#           env:
+#             - name: ENVIRONMENT
+#               value: "production"
+#             - name: DATABASE_URL
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: stimulus-secrets
+#                   key: database_url
+#           volumeMounts:
+#             - name: ssh-key-volume
+#               mountPath: "/root/.ssh"
+#               readOnly: true
+#           resources:
+#             requests:
+#               memory: "128Mi"
+#               cpu: "250m"
+#             limits:
+#               memory: "512Mi"
+#               cpu: "500m"
+#           readinessProbe:
+#             httpGet:
+#               path: /health
+#               port: 8000
+#             initialDelaySeconds: 5
+#             periodSeconds: 10
+#           livenessProbe:
+#             httpGet:
+#               path: /health
+#               port: 8000
+#             initialDelaySeconds: 10
+#             periodSeconds: 30
+#       volumes:
+#         - name: ssh-key-volume
+#           secret:
+#             secretName: github-ssh-key
+#             defaultMode: 0600
+#             items:
+#               - key: ssh-privatekey
+#                 path: id_ed25519
+#       imagePullSecrets:
+#         - name: ghcr-secret
+
