@@ -1,25 +1,165 @@
-# Scale deployment to 0 to completely stop the process
-kubectl scale deployment stimulus-web -n stimulus-uat --replicas=0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stimulus-web
+  namespace: stimulus-uat
+  labels:
+    app: stimulus-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stimulus-web
+  template:
+    metadata:
+      labels:
+        app: stimulus-web
+    spec:
+      initContainers:
+        - name: time-sync
+          image: alpine:3.19
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              apk add --no-cache chrony &&
+              chronyd -q 'server pool.ntp.org iburst' &&
+              echo "Time synchronized: $(date)"
+          securityContext:
+            privileged: true       
+      containers:
+      - name: stimulus-web
+        image: __CONTAINER_REGISTRY__/stimulus-web:__IMAGE_TAG__
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        env:
+        - name: PORT
+          value: "3000"
+        - name: HOSTNAME
+          value: "0.0.0.0"
+        - name: NODE_ENV
+          value: "production"
+        - name: NEXT_TELEMETRY_DISABLED
+          value: "1"
+        - name: NEXT_PUBLIC_API_URL
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: next-public-api-url
+        - name: BACKEND_API_URL
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: backend-api-url
+        - name: STIMULUS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: stimulus-api-key
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: openai-api-key
+        - name: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: clerk-publishable-key
+        - name: CLERK_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: clerk-secret-key
+        - name: DATABRICKS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: databricks-host
+        - name: DATABRICKS_HTTP_PATH
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: databricks-http-path
+        - name: DATABRICKS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: databricks-token
+        - name: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: next-public-google-maps-api-key
+        - name: NEXT_PUBLIC_AGENTS_DEPLOYMENT_URL
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: next-public-agents-deployment-url
+        - name: NEXT_PUBLIC_AGENTS_BACKEND_URL
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: next-public-agents-backend-url
+        - name: LANGSMITH_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: langsmith-api-key
+        - name: LANGSMITH_TRACING
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: langsmith-tracing
+        - name: LANGCHAIN_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: langchain-endpoint
+        - name: LANGCHAIN_PROJECT
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: langchain-project
+        - name: LANGCHAIN_CALLBACKS_BACKGROUND
+          value: "true"
+        - name: LANGCHAIN_TRACING_V2
+          value: "true"
+        - name: LANGGRAPH_API
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: langgraph-api-url
+        - name: LANGGRAPH_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stimulus-secrets
+              key: langgraph-api-key
+        command: ["bun"]
+        args: ["run", "next", "start"]
+        resources:
+          limits:
+            cpu: 1
+            memory: 4Gi
+          requests:
+            cpu: 200m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+          periodSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
 
-# Update ALL environment variables in one go to force complete reload
-kubectl patch deployment stimulus-web -n stimulus-uat --type=json -p='[
-  {"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [
-    {"name": "PORT", "value": "3000"},
-    {"name": "HOSTNAME", "value": "0.0.0.0"},
-    {"name": "NODE_ENV", "value": "production"},
-    {"name": "NEXT_TELEMETRY_DISABLED", "value": "1"},
-    {"name": "DEPLOYMENT", "value": "uat"},
-    {"name": "NEXT_PUBLIC_AGENTS_DEPLOYMENT_URL", "value": "http://stimulus-agents.stimulus-uat.svc.cluster.local:8001"},
-    {"name": "NEXT_PUBLIC_AGENTS_BACKEND_URL", "value": "http://localhost:8123"},
-    {"name": "LANGSMITH_API_KEY", "valueFrom": {"secretKeyRef": {"name": "stimulus-secrets", "key": "langsmith-api-key"}}},
-    {"name": "OPENAI_API_KEY", "valueFrom": {"secretKeyRef": {"name": "stimulus-secrets", "key": "openai-api-key"}}},
-    {"name": "NEXT_PUBLIC_API_URL", "valueFrom": {"secretKeyRef": {"name": "stimulus-secrets", "key": "next-public-api-url"}}},
-    {"name": "BACKEND_API_URL", "valueFrom": {"secretKeyRef": {"name": "stimulus-secrets", "key": "backend-api-url"}}}
-  ]}
-]'
-
-# Scale back to 1 to force fresh process start
-kubectl scale deployment stimulus-web -n stimulus-uat --replicas=1
-
-# Wait for deployment
-kubectl rollout status deployment stimulus-web -n stimulus-uat
