@@ -1,10 +1,52 @@
-kubectl patch deployment stimulus-web -n stimulus-uat --type='json' -p='[
-  {
-    "op": "replace",
-    "path": "/spec/template/spec/containers/0/args",
-    "value": [
-      "bash", "-c", 
-      "echo \"🔧 Fixing environment variables...\"; echo \"Current values: BACKEND=$NEXT_PUBLIC_AGENTS_BACKEND_URL DEPLOYMENT=$NEXT_PUBLIC_AGENTS_DEPLOYMENT_URL\"; find .next -name \"route.js\" -path \"*/copilotkit/*\" | xargs sed -i \"s|NEXT_PUBLIC_AGENTS_BACKEND_URL:\\\"\\\"|NEXT_PUBLIC_AGENTS_BACKEND_URL:\\\"$NEXT_PUBLIC_AGENTS_BACKEND_URL\\\"|g; s|NEXT_PUBLIC_AGENTS_DEPLOYMENT_URL:\\\"\\\"|NEXT_PUBLIC_AGENTS_DEPLOYMENT_URL:\\\"$NEXT_PUBLIC_AGENTS_DEPLOYMENT_URL\\\"|g; s|process\\.env\\.NEXT_PUBLIC_AGENTS_BACKEND_URL||\\\"$NEXT_PUBLIC_AGENTS_BACKEND_URL\\\"|g; s|process\\.env\\.NEXT_PUBLIC_AGENTS_DEPLOYMENT_URL||\\\"$NEXT_PUBLIC_AGENTS_DEPLOYMENT_URL\\\"|g\"; echo \"✅ Replacement complete. Starting Next.js...\"; exec bun run next start"
-    ]
+async function testAgentLookup() {
+  try {
+    // Fetch agents from server
+    const response = await fetch("https://srm-uat-agents.getstimulus.ai/assistants/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch agents: ${response.status}`);
+    }
+    
+    // Parse response
+    const availableAgents = await response.json();
+    console.log("Available agents:", availableAgents.slice(0, 2));
+    
+    // Define desired agents
+    const desiredAgentTypes = [
+      { graphId: "vendor_interest_agent", description: "Vendor Interest agent." },
+      { graphId: "lbe_certification_agent", description: "LBE Certification agent." }
+    ];
+    
+    // Find matching agents
+    const matchedAgents = [];
+    for (const desiredAgent of desiredAgentTypes) {
+      // Try exact match by graph_id
+      const match = availableAgents.find(a => 
+        a.graph_id === desiredAgent.graphId
+      );
+      
+      if (match) {
+        matchedAgents.push({
+          name: match.assistant_id,
+          description: `${desiredAgent.description} (${match.graph_id})`,
+        });
+        console.log(`✅ Found match for ${desiredAgent.graphId}: ${match.assistant_id}`);
+      } else {
+        console.log(`❌ No match found for ${desiredAgent.graphId}`);
+      }
+    }
+    
+    console.log("Matched agents:", matchedAgents);
+    
+    // Test if these would work with CopilotKit
+    console.log("These agents would be used by CopilotKit");
+  } catch (error) {
+    console.error("Error testing agent lookup:", error);
   }
-]'
+}
+
+testAgentLookup();
